@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>IGS Invoice Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 1200px;
+      margin: auto;
+      box-shadow: 0 20px 40px rgba(0,0,0,.3);
+    }
+    h1 { text-align:center; color:#2c5364; }
+    .company { text-align:center; font-size:14px; margin-bottom:20px; }
+    input, textarea { padding:6px; width:100%; border-radius:6px; border:1px solid #ccc; }
+    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:15px; }
+    table { width:100%; border-collapse:collapse; margin-top:15px; }
+    th, td { border:1px solid #ddd; padding:6px; text-align:center; font-size:13px; }
+    th { background:#2c5364; color:#fff; }
+    tfoot td { font-weight:bold; }
+    button { padding:8px 16px; border:none; border-radius:20px; margin:5px; cursor:pointer; background:linear-gradient(135deg,#11998e,#38ef7d); color:#fff; }
+    .footer { display:flex; justify-content:space-between; margin-top:40px; }
+    .built { text-align:center; margin-top:20px; font-size:12px; color:#555; }
+  </style>
+</head>
+<body>
+
+<div class="container" id="invoice">
+  <h1>Tax Invoice</h1>
+  <div class="company">
+    <strong contenteditable="true">JMD Enterprises</strong><br>
+    <span contenteditable="true">Sai Tower, Rukhminipuri, Hyderabad, Telangana - 500062</span><br>
+    <span contenteditable="true">Phone: +91 7095460374 | Email: jmdenterprises1985.108@gmail.com</span><br>
+    <strong>GSTIN:</strong> <span contenteditable="true">36CRUPS1658B1ZD</span>
+  </div>
+
+  <div class="grid">
+    <input placeholder="Invoice Number">
+    <input type="date">
+    <input placeholder="PO Number">
+    <input placeholder="Receiver GSTIN" id="rgstin">
+  </div>
+
+  <textarea placeholder="Ship To / Bill To"></textarea><br><br>
+
+  <input type="file" accept=".xlsx,.xls" onchange="loadExcel(event)">
+  <button onclick="addRow()">+ Add Row</button>
+
+  <table id="items">
+    <thead>
+      <tr>
+        <th>S.No</th><th>Description</th><th>HSN</th><th>GST %</th>
+        <th>Qty</th><th>MRP</th><th>Margin %</th><th>Unit Price</th><th>Taxable Value</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><td colspan="4">Total Qty</td><td id="tqty">0</td><td colspan="3">Total Taxable</td><td id="ttax">0</td></tr>
+      <tr><td colspan="8" id="gstLabel">GST</td><td id="tgst">0</td></tr>
+      <tr><td colspan="8">Gross Amount</td><td id="gross">0</td></tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    <div>Receiver's Signature & Stamp</div>
+    <div>For JMD Enterprises<br><br>Authorized Signatory</div>
+  </div>
+</div>
+
+<div style="text-align:center; margin-top:15px;">
+  <button onclick="window.print()">Print</button>
+  <button onclick="downloadPDF()">Download PDF</button>
+</div>
+
+<div class="built">Built by Mohd Irfan</div>
+
+<script>
+function addRow(data={}){
+  const tbody=document.querySelector('#items tbody');
+  const row=tbody.insertRow();
+  row.innerHTML=`
+    <td>${tbody.rows.length}</td>
+    <td contenteditable>${data.desc||''}</td>
+    <td contenteditable>${data.hsn||''}</td>
+    <td contenteditable oninput="recalc()">${data.gst||0}</td>
+    <td contenteditable oninput="recalc()">${data.qty||0}</td>
+    <td contenteditable>${data.mrp||''}</td>
+    <td contenteditable>${data.margin||''}</td>
+    <td contenteditable oninput="recalc()">${data.price||0}</td>
+    <td>0</td>`;
+}
+
+function recalc(){
+  let tqty=0, ttax=0, tgst=0;
+  document.querySelectorAll('#items tbody tr').forEach(r=>{
+    const gst=Number(r.cells[3].innerText)||0;
+    const qty=Number(r.cells[4].innerText)||0;
+    const price=Number(r.cells[7].innerText)||0;
+    const taxable=qty*price;
+    r.cells[8].innerText=taxable.toFixed(2);
+    tqty+=qty; ttax+=taxable; tgst+=taxable*gst/100;
+  });
+  document.getElementById('tqty').innerText=tqty;
+  document.getElementById('ttax').innerText=ttax.toFixed(2);
+  const rgstin=document.getElementById('rgstin').value||'';
+  if(rgstin.startsWith('36')){
+    document.getElementById('gstLabel').innerText='CGST + SGST';
+    document.getElementById('tgst').innerText=(tgst/2).toFixed(2)+' + '+(tgst/2).toFixed(2);
+  } else {
+    document.getElementById('gstLabel').innerText='IGST';
+    document.getElementById('tgst').innerText=tgst.toFixed(2);
+  }
+  document.getElementById('gross').innerText=(ttax+tgst).toFixed(2);
+}
+
+function loadExcel(e){
+  const reader=new FileReader();
+  reader.onload=evt=>{
+    const wb=XLSX.read(evt.target.result,{type:'array'});
+    const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+    document.querySelector('#items tbody').innerHTML='';
+    data.forEach(r=>{
+      addRow({
+        desc:r.Description||r['Item Description']||'',
+        hsn:r.HSN||'',
+        gst:r['GST %']||r['GST Rate (%)']||0,
+        qty:r.Qty||r.Quantity||0,
+        mrp:r.MRP||'',
+        margin:r['Margin %']||'',
+        price:r['Unit Price']||0
+      });
+    });
+    recalc();
+  };
+  reader.readAsArrayBuffer(e.target.files[0]);
+}
+
+function downloadPDF(){
+  html2pdf().from(document.getElementById('invoice')).set({
+    margin:10,
+    filename:'Invoice.pdf',
+    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+  }).save();
+}
+</script>
+</body>
+</html>
